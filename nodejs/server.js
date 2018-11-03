@@ -24,7 +24,7 @@ var config = {
     port:22,
     agent:process.env.SSH_AUTH_SOCK,
     privatekey:require('fs').readFileSync('/home/bitnami/.ssh/id_rsa'),
-    
+
     dstPort:27017
 };
 

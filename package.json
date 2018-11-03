@@ -1,0 +1,26 @@
+{
+  "name": "crawling",
+  "version": "1.0.0",
+  "description": "crawling",
+  "main": "index.js",
+  "dependencies": {
+    "body-parser": "^1.18.3",
+    "express": "^4.16.4",
+    "mongoose": "^5.3.9",
+    "tunnel-ssh": "^4.1.4"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KimHgYg/Crawling.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/KimHgYg/Crawling/issues"
+  },
+  "homepage": "https://github.com/KimHgYg/Crawling#readme"
+}
