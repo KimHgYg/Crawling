@@ -31,7 +31,7 @@ module.exports = function(app, fs){
         sess = req.session;
         
         fs.readFile(__dirname + "/../data/user.json",'utf8', function(err, data){
-            if(err) console.log(err);
+            if(err) {console.log(err); return;}
             var users = JSON.parse(data);
             var username = req.params.username;
             var password = req.params.password;
@@ -48,7 +48,6 @@ module.exports = function(app, fs){
                 sess.username = username;
                 sess.name = users[username]["name"];
                 res.json(result);
-                res.redirect('/');
             }else{
                 result["success"] = 0;
                 result["error"] = "incorrect";
