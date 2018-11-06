@@ -24,9 +24,9 @@ var user_pri = new Schema({
     ID:String,
     age:Number,
     gender:String,
-    inter1:String,
-    intre2:String,
-    inter3:String
+    inter1:Number,
+    intre2:Number,
+    inter3:Number
 });
 
 var user_tfidf = new Schema({
