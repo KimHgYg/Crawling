@@ -21,6 +21,7 @@ module.exports = function create_Server() {
         client_server_sock.on('error', function(err){
             console.log('client_server_Socket Error: ',JSON.stringify(err));
         });
+        //if use timeout, implements heartbeat
         client_server_sock.on('timeout',function(){
             console.log('client_server_Socket Time out');
         });

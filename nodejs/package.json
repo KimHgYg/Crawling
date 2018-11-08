@@ -2,7 +2,7 @@
   "name": "nodejs",
   "version": "1.0.0",
   "description": "This is the npm module package",
-  "repository":"https://github.com/KimHgYg/Crawling.git",
+  "repository": "https://github.com/KimHgYg/Crawling.git",
   "main": "server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -12,12 +12,14 @@
   "license": "ISC",
   "dependencies": {
     "body-parser": "^1.18.3",
+    "cluster": "^0.7.7",
     "ejs": "^2.6.1",
     "express": "^4.16.4",
     "express-session": "^1.15.6",
     "latest": "^0.2.0",
     "mongoose": "^5.3.9",
     "net": "^1.0.2",
+    "node-mutex": "^0.2.2",
     "tunnel-ssh": "^4.1.4"
   }
 }
