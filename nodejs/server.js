@@ -1,33 +1,29 @@
 //init server 
+//var fs = require("fs");
+//var mongoose = require("mongoose");
 
-var express = require("express");
-var app = express();
-var bodyParser = require("body-parser");
-var session = require("express-session");
-var fs = require("fs");
-var mongoose = require("mongoose");
-
-//cluster
-var worker = require("./mutli.creator.js");
+//init redis
+require("./Conn/redis.js").init();
 
 //init sockets
-var socks = require("./Conn/sock_server.js")();
-
-//init mongoose
-var db = require("./Conn/DB_conn.js");
-var DB_conn = db.Connect(mongoose,fs);
+//require("./Conn/Crawling_conn.js")();
 
 
-module.exports = {
-    DB_conn : DB_conn,
-    client_server_sock : socks[0],  //port 3000
-    crawling_server_sock : socks[1],    //port 3002
-    worker : worker
-}
+//db.Connect(mongoose,fs);
+
+
+//module.exports = {
+    //DB_conn : DB_conn,
+    //client_server : socks.client_server,  //function port 3000
+    //crawling_server_sock : crawling_server_sock,    //server port 3002
+    //worker : worker
+//};
+
+
 
 
 /*
-//REST API -- not used
+/Express module -- not used
 
 app.set('views',__dirname + '/views');
 app.set('view engine','ejs');

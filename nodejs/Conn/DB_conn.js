@@ -1,9 +1,10 @@
 //db-connect mudule
 var tunnel = require("tunnel-ssh");
-
+var fs = require("fs");
+var mongoose = require("mongoose");
 module.exports = {
     //mongodb configure
-    Connect : function(mongoose,fs){
+    Connect : function(crawling_server_sock){
     
         var db = mongoose.connection;
         
@@ -30,6 +31,8 @@ module.exports = {
             db.on('error',console.error.bind(console, 'DB connection error:'));
             db.once('open',function(){
                 console.log("DB connection established");
+                //cluster
+                require("../multi/creator.js")(crawling_server_sock, db);
             });
             mongoose.connect('mongodb://52.79.249.174:27017/crawling',{
                 useNewUrlParser:true

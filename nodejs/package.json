@@ -16,10 +16,14 @@
     "ejs": "^2.6.1",
     "express": "^4.16.4",
     "express-session": "^1.15.6",
+    "forever": "^0.15.3",
+    "json": "^9.0.6",
     "latest": "^0.2.0",
     "mongoose": "^5.3.9",
     "net": "^1.0.2",
     "node-mutex": "^0.2.2",
+    "redis": "^2.8.0",
+    "redis-cluster": "0.0.8",
     "tunnel-ssh": "^4.1.4"
   }
 }

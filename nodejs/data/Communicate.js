@@ -1,4 +1,4 @@
-var socks = require("./server.js");
+var socks = require("../server.js");
 
 var DB_conn = socks.DB_conn;
 var client = socks.client_server_sock;
@@ -16,7 +16,7 @@ function writeData(socket, data){
     }
 }
 
-//
+//between client and nodejs server
 client.on('data',function(data){
     var label = 0; // For menu
     console.log('client_server sent' + data.toString());

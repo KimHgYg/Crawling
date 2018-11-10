@@ -1,10 +1,22 @@
-var socks = require("server.js");
-var schema = require("./models/schema.js");
-var mutex_crawling = require("node-mutex");
-var DB_conn = socks.DB_conn;
-var crawling_sock = socks.crawling_server_sock;
+var client_sock = require("../Conn/Client_conn.js")(); //creating client-server function
+var redis_client = require("../Conn/redis.js").client;
+var crawling_sock; //socket
+var mong; //mongoose connection
 
-var buffer = [];
+//get crawling sock & mong
+redis_client.lrange('Conn',0,-1, (err, arr) => {
+     if(err) console.log('redis error : ' + err);
+     else {crawling_sock = (arr[0]); 
+     mong = (arr[1]);}
+});
+
+//get schema
+var schema = require("../models/schema.js")(mong); //mongoose schema
+
+//mutex for crawling
+var mutex_crawling = require("node-mutex"); //for crawling server mutex
+
+
 var data;
 var tfidf;
 var flag = 1;
@@ -12,16 +24,19 @@ var label;
 
 //Before assign data, you should check whether this process is busy
 //if busy, put it into buffer
-//should manage buffer system.
-process.on('message', function(message){
-    data = message.split(' ');
-    label = data[0];
-});
+//should manage buffer system. -> RR scheduling
 
 crawling_sock.on('data', function(data){
     tfidf = data;
     flag = 0;
-})
+});
+
+client_sock.on('data', function(str){
+    data = str.split(' ');
+    label = data[0];
+});
+
+console.log('%d pid worker is connected',process.pid);
 
 while(1){
     if(label == 0){
@@ -55,7 +70,19 @@ while(1){
             flag=1;
             unlock();
         });
-        schema.background_model.find({tfidf1: })
+        tfidf = tfidf.split(' ');
+        //find articles data including tfidf
+        schema.background_model.find({$or:[
+            {tfidf: {"$regex": tfidf[0],"$options":"i"}},
+            {tfidf: {"$regex": tfidf[1],"$options":"i"}},
+            {tfidf: {"$regex": tfidf[2],"$options":"i"}}
+            ]},{_id:0,link:1,tfidf:0},function(err, links){
+                if(err) console.error(err + ' before popululate');
+                if(links.length == 0) console.log("%d pid worker : found no matching tfidf");
+            }).populate('_No').exec(function(err, articles){
+                if(err) console.log(err + 'after poplulate');
+                writeData(client_sock,articles);//articles == dictionary
+            });
         label = 0;
     }else if(label == 4){    //request article list
         
@@ -64,12 +91,12 @@ while(1){
 }
 
 function writeData(socket, data){
-    var success = !socket.write(data);
-    if(!success){
-        (function(socket, data){
-            socket.once('drain',function(){
-                writeData(socket,data);
-            });
-        })(socket,data);
-    }
+        var success = !socket.write(data);
+        if(!success){
+            (function(socket, data){
+                socket.once('drain',function(){
+                    writeData(socket,data);
+                });
+            })(socket,data);
+        }
 }
