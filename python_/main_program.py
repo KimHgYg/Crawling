@@ -8,7 +8,7 @@ import logging
 
 from pymongo import MongoClient
 import pymongo
-
+#aasdf
 class Main_Program:
 
     # 프로그램 객체 생성
