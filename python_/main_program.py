@@ -3,23 +3,25 @@ import RNN
 import Server
 
 from multiprocessing import Process
-import multiprocessing
 import logging
+import multiprocessing
 
 from pymongo import MongoClient
 import pymongo
-#aasdf
+
 class Main_Program:
 
     # 프로그램 객체 생성
     def __init__(self):
         #몽고디비와 연결 객체
-        self.Conn = MongoClient('52.79.249.174',27017)
+        self.Conn = MongoClient('52.79.249.174', 27017)
+        print('DB connected')
         #크롤링객체 생성
-        self.Crawling = Crawling_func.crawling_func()
+        self.Crawling = Crawling_func.crawling_func(self.Conn)
+        print('Crawling object created')
         #모델 객체 생성
         self.model_obj = RNN.rnn(self.Conn)
-
+        print('model object created')
 
     #크롤링...
     #크롤링 객체, RNN 객체, _id 값
