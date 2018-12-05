@@ -2,12 +2,10 @@ import Crawling_func
 import RNN
 import Server
 
-from multiprocessing import Process
 import logging
 import multiprocessing
 
 from pymongo import MongoClient
-import pymongo
 
 class Main_Program:
 
@@ -37,53 +35,61 @@ class Main_Program:
         p = None
 
         #  Menu
-        while (1):
+        while True:
             menu = int(input("1 : crawling " +
-                             "2 : load model" +
+                             "2 : load model " +
                              "3 : build model " +
-                             "4 : start recommand program\n"))
+                             "4 : learn model " +
+                             "5 : open socket for recommendation\n" +
+                             "6 : exit program (warn : Data will be deleted)\n"))
             #  start crawling -- blocked
-            if (menu == 1):
+            if menu == 1:
                 self.Crawling.crawling()
                 self.model_obj.data_manipulate()
             # load model --blocked
-            elif (menu == 2):
+            elif menu == 2:
                 if (self.model_obj.loadModel() == False):
                     print("There's no saved model, please build model first\n")
 
             # build model -- blocked
-            elif (menu == 3):
-                if (self.model_obj.train_ready() is None):
-                    print("Training set not exist")
-                    continue
-
-                p = int(input("1: build relu model\n" +
+            elif menu == 3:
+                p = int(input("1 : build relu model\n" +
                               "2 : build sigmoid model\n" +
                               "3 : build bidirectional relu model\n" +
-                              "4 : build bidirectional sigmoid model\n" +
-                              "5 : build all model\n"))
+                              "4 : build bidirectional sigmoid model\n"))
                 if (p == 1):
-                    p = Process(target=self.model_obj.build_learn_model)
-                    p.start()
+                    self.model_obj.build_model()
                 elif (p == 2):
-                    p = Process(target=self.model_obj.build_learn_model_sig)
-                    p.start()
+                    self.model_obj.build_model_sig()
                 elif (p == 3):
-                    p = Process(target=self.model_obj.build_learn_model_bi)
-                    p.start()
+                    self.model_obj.build_model_bi()
                 elif (p == 4):
-                    p = Process(target=self.model_obj.build_learn_model_sig_bi)
-                    p.start()
-                elif (p == 5):
-                    p = Process(target=self.model_obj.build_model_all)
-                    p.start()
-
-                p.join()
+                    self.model_obj.build_model_sig_bi()
+            elif menu == 4:
+                if (self.model_obj.train_ready() == False):
+                    print("Training set not exist")
+                    continue
+                p = int(input("1: learn relu model\n" +
+                              "2 : learn sigmoid model\n" +
+                              "3 : learn bidirectional relu model\n" +
+                              "4 : learn bidirectional sigmoid model\n"))
+                if (p == 1):
+                    self.model_obj.laern_model()
+                elif (p == 2):
+                    self.model_obj.learn_model_sig()
+                elif (p == 3):
+                    self.model_obj.learn_model_bi()
+                elif (p == 4):
+                    self.model_obj.learn_model_sig_bi()
 
             # start recommand program
-            elif (menu == 4):
+            elif menu == 5:
                 self.server = Server('0.0.0.0',3002,self.model_obj)
                 self.server.start_server()
+
+            elif menu == 6:
+                print("Exitting program")
+                break
 
         return
 
