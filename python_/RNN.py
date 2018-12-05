@@ -26,10 +26,11 @@ class rnn:
         self.db = self.Conn.crawling
         self.background = self.db.background
         self.foreground = self.db.foreground
-        self.user_tfdif = self.db.user_tfidf
+        self.user_tfidf = self.db.user_tfidf
+        self.user_pri = self.db.user_pri
 
     #training set 생성 여부
-    def train_raedy(self):
+    def train_ready(self):
         return self.train_X is not None
 
     # load model
@@ -69,14 +70,14 @@ class rnn:
     #kernel_init = 'glorot_uniform'
     #time_step,  output_shape, model_name_to_save
     #number of feature = 8
-    def build_model(self, max_pad, categori_shape):
+    def build_model(self):
         activate = 'tanh'
         kernel_init = 'Orthogonal'
         model = Sequential()
         #한 timestep에 한 ID의 데이터 max_pad만큼 들어간다
-        model.add(LSTM(256, return_sequences=True, input_shape=(max_pad,8), activation=activate, kernel_initializer = kernel_init))
+        model.add(LSTM(256, return_sequences=True, input_shape=(self.max_pad,8), activation=activate, kernel_initializer = kernel_init))
         #return shape는
-        model.add(Dense(categori_shape, activation='sigmoid', kernel_initializer = 'Orthogonal'))
+        model.add(Dense(self.categori_shape, activation='sigmoid', kernel_initializer = 'Orthogonal'))
 
         model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
 
@@ -84,12 +85,12 @@ class rnn:
 
         return model
     
-    def build_model_sigmoid(self, max_pad, categori_shape):
+    def build_model_sigmoid(self):
         activate_1 = 'tanh'
         kernel_init = 'glorot_uniform'
         model = Sequential()
-        model.add(LSTM(256, return_sequences=True, input_shape=(max_pad,8), activation=activate_1, kernel_initializer = kernel_init))
-        model.add(Dense(categori_shape, activation=activate_1, kernel_initializer = kernel_init))
+        model.add(LSTM(256, return_sequences=True, input_shape=(self.max_pad,8), activation=activate_1, kernel_initializer = kernel_init))
+        model.add(Dense(self.categori_shape, activation=activate_1, kernel_initializer = kernel_init))
 
         model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
 
@@ -97,12 +98,12 @@ class rnn:
 
         return model
     
-    def build_model_bi(self, max_pad, categori_shape):
+    def build_model_bi(self):
         activate = 'tanh'
         kernel_init = 'Orthogonal'
         model = Sequential()
-        model.add(Bidirectional(LSTM(256, return_sequences=True, activation=activate, kernel_initializer = kernel_init), input_shape=(max_pad,8)))
-        model.add(Dense(categori_shape, activation='sigmoid', kernel_initializer = 'Orthogonal'))
+        model.add(Bidirectional(LSTM(256, return_sequences=True, activation=activate, kernel_initializer = kernel_init), input_shape=(self.max_pad,8)))
+        model.add(Dense(self.categori_shape, activation='sigmoid', kernel_initializer = 'Orthogonal'))
 
         model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
 
@@ -110,12 +111,12 @@ class rnn:
 
         return model
     
-    def build_model_sigmoid_bi(self, max_pad, categori_shape):
+    def build_model_sigmoid_bi(self):
         activate_1 = 'tanh'
         kernel_init = 'glorot_uniform'
         model = Sequential()
-        model.add(Bidirectional(LSTM(256, return_sequences=True, activation=activate_1, kernel_initializer = kernel_init), input_shape=(max_pad,8)))
-        model.add(Dense(categori_shape, activation=activate_1, kernel_initializer = kernel_init))
+        model.add(Bidirectional(LSTM(256, return_sequences=True, activation=activate_1, kernel_initializer = kernel_init), input_shape=(self.max_pad,8)))
+        model.add(Dense(self.categori_shape, activation=activate_1, kernel_initializer = kernel_init))
 
         model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
 
@@ -135,6 +136,14 @@ class rnn:
         #db에서 데이터 불러오기
         user_tfidf_info = self.user_tfidf.find()
         user_pri_info = self.user_pri.find()
+
+        if user_tfidf_info.count() == 0:
+            print("열람 기록이 없습니다.")
+            return
+
+        if user_pri_info.count() == 0:
+            print("사용자 정보가 없습니다.")
+            return
 
         #db에서 불러온 데이터 dataframe형태로 저장
         user_tfidf = pd.DataFrame(user_tfidf_info,columns = ['ID','tfidf'])
@@ -218,63 +227,56 @@ class rnn:
             tmp.append(sum(target))
 
         #한 timestep에 max_pad만큼의 Y값
-        train_Y = np.array(tmp)[:,np.newaxis].reshape(-1,self.max_pad,len(tmp[0]))
+        self.categori_shape = len(tmp[0])
+        train_Y = np.array(tmp)[:,np.newaxis].reshape(-1,self.max_pad,self.categori_shape)
 
         self.train_X = train_X
         self.train_Y = train_Y
         print('training set created, ready to build model')
         return
     
-    def build_learn_all(self):
-        #모델 구축
-        split = int(len(self.train_X)*self.split_ratio)
-        self.model = self.build_model(self.max_pad, self.train_Y.shape[2])
-        self.model_sig = self.build_model_sigmoid(self.max_pad, self.train_Y.shape[2])
-        self.model_bi = self.build_model_bi(self.max_pad, self.train_Y.shape[2])
-        self.model_sig_bi = self.build_model_sigmoid_bi(self.max_pad, self.train_Y.shape[2])
-        
-        #모델 run
-        (history, score) = self.learning(self.model, self.train_X[:split],self.train_Y[:split],self.train_X[split:],self.train_Y[split:],'_relu')
-        (history2, score2) = self.learning(self.model_sig, self.train_X[:split],self.train_Y[:split],self.train_X[split:],self.train_Y[split:],'_sigmoid')
-        (history3, score3) = self.learning(self.model_bi, self.train_X[:split],self.train_Y[:split],self.train_X[split:],self.train_Y[split:],'_relu_bi')
-        (history4, score4) = self.learning(self.model_sig_bi, self.train_X[:split],self.train_Y[:split],self.train_X[split:],self.train_Y[split:],'_sigmoid_bi')
-
-        return
-    
-    def build_learn_model(self):
+    def learn_model(self):
+        if self.model is None:
+            print("모델이 없습니다.")
+            return
         print('building relu model...')
         split = int(len(self.train_X)*self.split_ratio)
-        self.model = self.build_model(self.max_pad, self.train_Y.shape[2])
         (history, score) = self.learning(self.model, self.train_X[:split],self.train_Y[:split],self.train_X[split:],self.train_Y[split:],'_relu')
 
         self.model.save('relu_model'+datetime.today().strftime("%Y%m%d"))
         print('relu model done')
         return
     
-    def build_learn_model_sig(self):
+    def learn_model_sig(self):
+        if self.model_sig is None:
+            print("모델이 없습니다.")
+            return
         print('building sigmoid model')
         split = int(len(self.train_X)*self.split_ratio)
-        self.model_sig = self.build_model_sigmoid(self.max_pad, self.train_Y.shape[2])
         (history, score) = self.learning(self.model_sig, self.train_X[:split],self.train_Y[:split],self.train_X[split:],self.train_Y[split:],'_relu')
 
         self.model.save('sigmoid_model'+datetime.today().strftime("%Y%m%d"))
         print('sigmoid model done')
         return
     
-    def build_learn_model_bi(self):
+    def learn_model_bi(self):
+        if self.model_bi is None:
+            print("모델이 없습니다.")
+            return
         print('building bidirectional relu model')
         split = int(len(self.train_X)*self.split_ratio)
-        self.model_bi = self.build_model_bi(self.max_pad, self.train_Y.shape[2])
         (history, score) = self.learning(self.model_bi, self.train_X[:split],self.train_Y[:split],self.train_X[split:],self.train_Y[split:],'_relu')
 
         self.model.save('bi_relu_model')
         print('bidirectional relu model done'+datetime.today().strftime("%Y%m%d"))
         return
     
-    def build_learn_model_sig_bi(self):
+    def learn_model_sig_bi(self):
+        if self.model_sig_bi is None:
+            print("모델이 없습니다.")
+            return
         print('building bidirectional sigmoid model')
         split = int(len(self.train_X)*self.split_ratio)
-        self.model_sig_bi = self.build_model_sig_bi(self.max_pad, self.train_Y.shape[2])
         (history, score) = self.learning(self.model_sig_bi, self.train_X[:split],self.train_Y[:split],self.train_X[split:],self.train_Y[split:],'_relu')
 
         self.model.save('bi_sigmoid_model'+datetime.today().strftime("%Y%m%d"))
