@@ -1,4 +1,4 @@
 # Created by .ignore support plugin (hsz.mobi)
 .idea/
 *.pyc
-./nodejs/node_modules/
+nodejs/node_modules/
