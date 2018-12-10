@@ -11,6 +11,7 @@ module.exports = function(){
         cluster.setupMaster({
             exec: "../multi/worker.js",
         });
+        
         console.log('Creating Cluster');
         for(var t=0;t<num_thread;t++){
             worker[t] = cluster.fork();
