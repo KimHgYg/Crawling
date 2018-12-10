@@ -1,48 +1,47 @@
-var client_sock = require("../Conn/Client_conn.js")(); //creating client-server function
-var redis_client = require("../Conn/redis.js").client;
-var crawling_sock; //socket
-var mong; //mongoose connection
+console.log('%d pid worker is connected',process.pid);
+var client_server_sock = require("../Conn/Client_conn.js")(); //creating client-server function
+var crawling_server_sock = require("../Conn/Crawling_conn")(); // crawling socket
+var mong = require("../Conn/DB_conn").Connect(); //mongoose connection
 
-//get crawling sock & mong
-redis_client.lrange('Conn',0,-1, (err, arr) => {
-     if(err) console.log('redis error : ' + err);
-     else {crawling_sock = (arr[0]); 
-     mong = (arr[1]);}
-});
 
 //get schema
 var schema = require("../models/schema.js")(mong); //mongoose schema
 
-//mutex for crawling
-var mutex_crawling = require("node-mutex"); //for crawling server mutex
-
 
 var data;
-var tfidf;
-var flag = 1;
-var label;
+var recommendation;
+var label = 0;
+
 
 //Before assign data, you should check whether this process is busy
 //if busy, put it into buffer
 //should manage buffer system. -> RR scheduling
 
-crawling_sock.on('data', function(data){
-    tfidf = data;
-    flag = 0;
+var client_sock;
+var crawling_sock;
+crawling_server_sock.on('connect',(c)=>{
+    crawling_sock = c;
+    c.on('data', function(data){
+        recommendation = data;
+    });
 });
 
-client_sock.on('data', function(str){
-    data = str.split(' ');
-    label = data[0];
-});
 
-console.log('%d pid worker is connected',process.pid);
+//data : 'type', 'content'
+client_server_sock.on('connection',(c)=>{
+    cleint_sock = c;
+    c.on('data', function(str){
+        data = str.split(' ');
+        label = data[0];
+    });
+});
 
 while(1){
     if(label == 0){
         continue;
     }
-    else if(label == 1){    //sign up
+    else if(label == 1){    //sign up, give user info ID, age, gender, ineter 1,2,3,
+                            //interact directly with db
         console.log('%d pid worker is signing up',process.pid);
         if(data.length != 7){
             console.log('%d pid sign up data is incorrect');
@@ -60,32 +59,16 @@ while(1){
     }else if(label == 2){    //login
         //get session if id, pswd are correct
         label = 0;
-    }else if(label == 3){    //recommend article list for user get ID from server
-                        //send ID to crawling server and receive tfidf for user from there
-        console.log('%d pid worker is recommanding',process.pid);
-        //var values = {age :};
-        mutex_crawling.lock('key').then(function (unlock){
-            writeData(crawling_sock,data[1]);
-            while(flag);
-            flag=1;
-            unlock();
-        });
-        tfidf = tfidf.split(' ');
-        //find articles data including tfidf
-        schema.background_model.find({$or:[
-            {tfidf: {"$regex": tfidf[0],"$options":"i"}},
-            {tfidf: {"$regex": tfidf[1],"$options":"i"}},
-            {tfidf: {"$regex": tfidf[2],"$options":"i"}}
-            ]},{_id:0,link:1,tfidf:0},function(err, links){
-                if(err) console.error(err + ' before popululate');
-                if(links.length == 0) console.log("%d pid worker : found no matching tfidf");
-            }).populate('_No').exec(function(err, articles){
-                if(err) console.log(err + 'after poplulate');
-                writeData(client_sock,articles);//articles == dictionary
-            });
+    }else if(label == 3){
+        //get recommandation from crawling server, give ID
+        console.log('%d pid worker is recommending',process.pid);
+                                //ID
+        writeData(crawling_sock,data[1],() => {writeData(client_sock,recommendation)});
+
+        //find articles data including recommendation
         label = 0;
     }else if(label == 4){    //request article list
-        
+        //get directly from db
         label = 0;
     }
 }
@@ -99,4 +82,4 @@ function writeData(socket, data){
                 });
             })(socket,data);
         }
-}
+};

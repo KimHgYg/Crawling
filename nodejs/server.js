@@ -3,7 +3,6 @@
 //var mongoose = require("mongoose");
 
 //init redis
-require("./Conn/redis.js").init();
 
 //init sockets
 //require("./Conn/Crawling_conn.js")();
