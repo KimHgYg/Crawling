@@ -3,8 +3,6 @@
 
 # In[ ]:
 
-
-import numpy as np
 from keras.layers import *
 from keras.models import *
 from keras.utils import *
@@ -22,13 +20,10 @@ class rnn:
     max_pad = 15
 
     def __init__(self, Conn):
-        self.Conn = Conn
-        self.db = self.Conn.crawling
-        self.background = self.db.background
-        self.foreground = self.db.foreground
-        self.user_tfidf = self.db.user_tfidf
-        self.user_pri = self.db.user_pri
-
+        self.conn = Conn
+        self.db = Conn.get_database('crawling')
+        self.user_tfidf = self.db.get_collection('user_tfidfs')
+        self.user_pri = self.db.get_collection('user_pris')
     #training set 생성 여부
     def train_ready(self):
         return self.train_X is not None
@@ -103,7 +98,7 @@ class rnn:
         kernel_init = 'Orthogonal'
         model = Sequential()
         model.add(Bidirectional(LSTM(256, return_sequences=True, activation=activate, kernel_initializer = kernel_init), input_shape=(self.max_pad,8)))
-        model.add(Dense(self.categori_shape, activation='sigmoid', kernel_initializer = 'Orthogonal'))
+        model.add(Dense(self.categori_shape, activation='sigmoid', kernel_initializer='Orthogonal'))
 
         model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
 
@@ -146,20 +141,21 @@ class rnn:
             return
 
         #db에서 불러온 데이터 dataframe형태로 저장
-        user_tfidf = pd.DataFrame(user_tfidf_info,columns = ['ID','tfidf'])
-        user_pri = pd.DataFrame(user_pri_info,columns = ['ID','age','gender','inter1','inter2','inter3'])
+        user_tfidf = pd.DataFrame(user_tfidf_info,columns = ['_id','tfidf1','tfidf2','tfidf3'])
+        user_pri = pd.DataFrame(user_pri_info,columns = ['_id','age','gender','inter1','inter2','inter3'])
 
         #tfidf 분할을 위해 따로 drop
         #tfidf
-        user_tfidf_value = user_tfidf.drop(columns = ['ID']).values
+        #user_tfidf_value = user_tfidf.drop(columns = ['_id']).values
+        tmp = user_tfidf.drop(columns = ['_id']).values
 
         #ID
-        user_tfidf = user_tfidf.drop(['tfidf'],axis=1)
+        user_tfidf = user_tfidf['_id']
 
-        tmp = []
+        #tmp = []
         #tfidf 분할
-        for arg in user_tfidf_value:
-            tmp.append(' '.join(arg).split(' '))
+        #for arg in user_tfidf_value:
+         #   tmp.append(' '.join(arg).split(' '))
 
         # tokenizer
         self.token = Tokenizer()
@@ -176,16 +172,16 @@ class rnn:
             self.idx_word[self.token.word_index[w]] = w
 
 
-        #분할 한 tfidf dataframe으로 만든 후 원본과 합친다
-        tmp = pd.DataFrame(tmp,columns = ['tfidf','tfidf2','tfidf3'])
+        #분할한 tfidf dataframe으로 만든 후 원본과 합친다
+        tmp = pd.DataFrame(tmp, columns=['tfidf', 'tfidf2', 'tfidf3'])
 
-        user_tfidf = pd.concat([user_tfidf,tmp],axis=1)
+        user_tfidf = pd.concat([user_tfidf, tmp],axis=1)
 
         #tfidf와 사용자 정보를 merge
-        merged = pd.merge(user_tfidf,user_pri)
+        merged = pd.merge(user_tfidf,user_pri, on=['_id'])
 
         #ID별로 Y 구하기 위해 추출
-        ID = user_tfidf.ID.unique()
+        ID = user_tfidf._id.unique()
 
         train_X = []
         train_Y = []
@@ -194,10 +190,10 @@ class rnn:
         for id in ID:
             #ID의 각 원소에 해당하는 ID를 제외한 나머지 값들 transpose 해서 뽑는다
             #pad를 위한 .T
-            tmp = merged.loc[merged['ID'] == id,'tfidf':].values.T
+            tmp = merged.loc[merged['_id'] == id,'tfidf':].values.T
             #데이터가 부족한 사용자는 0값으로 더미 데이터 붙여준다
             #다시 .T
-            tmp = pad_sequences(tmp,maxlen = self.max_pad).T
+            tmp = pad_sequences(tmp,maxlen=self.max_pad).T
             train_X.extend(tmp)
 
         #(N,max_pad,8)로 reshape
@@ -211,7 +207,7 @@ class rnn:
 
         for id in ID:
             #각 ID별로 tfidf값만 추출
-            user_private = merged.loc[merged['ID'] == id, 'tfidf' : 'tfidf3' ].values.T
+            user_private = merged.loc[merged['_id'] == id, 'tfidf':'tfidf3'].values.T
             #pad_sequence로 데이터 수 맞춰준다.
             user_private = pad_sequences(user_private, maxlen=self.max_pad).T
             # 각 ID별로 데이터를 하나씩 이동시킨다
@@ -219,7 +215,9 @@ class rnn:
             train_Y.extend(user_private)
 
         tmp = []
+
         self.categori = to_categorical(np.array(train_Y).reshape(-1,3))
+
         #one-hot 표현으로 바꾼다
         #데이터별로 to_categorical 하면 데이터 원소만큼 나눠져서 categorical 된다
         for target in self.categori:
@@ -228,7 +226,7 @@ class rnn:
 
         #한 timestep에 max_pad만큼의 Y값
         self.categori_shape = len(tmp[0])
-        train_Y = np.array(tmp)[:,np.newaxis].reshape(-1,self.max_pad,self.categori_shape)
+        train_Y = np.array(tmp).reshape(-1,self.max_pad,self.categori_shape)
 
         self.train_X = train_X
         self.train_Y = train_Y

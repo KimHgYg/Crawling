@@ -1,13 +1,11 @@
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
+import pandas as pd
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 from konlpy.tag import Twitter
 import re
-
-import pymongo
-from pymongo import MongoClient
 
 # 정치 경제 스포츠 연예 사회 국제
 # politics economy sports enter national inter
@@ -40,20 +38,14 @@ def get_html(url):
     return _html
 
 class crawling_func:
-    def __init__(self,Conn):
+    def __init__(self, model):
         # 기사의 class 개수
         self.num_class = 6
-        self.Conn = Conn
-        self.docs = [[] for i in range(self.num_class)]
-        self.foreground = Conn.crawling.foreground
-        self.background = Conn.crawling.background
+        self.model = model
+
 
     def crawling(self):
         print("Crawling Start...")
-        try:
-            self._id = int(self.Conn.crawling.foreground.find().sort('_id', pymongo.DESCENDING)[0]['_id']) + 1
-        except Exception as e:
-            self._id = 0
 
         crawling_list = [
             [self.joongang_crawling, 'joongang_crawling'],
@@ -71,16 +63,55 @@ class crawling_func:
 
     def cal_weight(self):
         print('calculating weight...')
-
+        docs = [[] for i in range(6)]
         stopwords = ['.', ',', '\n', '\xa0', re.compile('^A-Za-z*$')]
         tfidf_list = []
+        #twitter로 명사 추출
         t = Twitter()
+
+        #foregrounds 모델에서 데이터 select한 cursor
+        cols = ['id','class','press','link']
+        cursor = pd.DataFrame(self.model.selectForeground(*cols),columns=cols)
+
+        #class별로 cursor 데이터 분류해서 docs에 넣는다
+        for clas, i in [('politics',0),('economy',1),('sports',2),('enter',3),('national',4),('inter',5)]:
+            df_tmp = cursor.loc[cursor['class'] == clas]
+            for article in df_tmp.values:
+                html = get_html(article[3])
+                soup = BeautifulSoup(html,'lxml', from_encoding='utf-8')
+                try:
+                    if article[2] == 'chosun' and clas == 'economy':
+                        body = soup.find('div',id='news_body_id')
+                        body = body.find_all('div',attrs={'class':'par'})
+                        text = ''
+                        for par in body:
+                            text += par.get_text()
+                        docs[1].append([text,article[0]])
+                    elif article[2] == 'chosun' and clas != 'economy':
+                        text = ""
+                        body = soup.find('div', id='news_body_id')
+                        body = body.findAll('div', attrs={'class':'par'})
+                        for par in body:
+                            text += (par.get_text() + " ")
+                        docs[i].append([text, article[0]])
+                    elif article[2] == 'donga':
+                        docs[i].append([soup.find('div', attrs={'class':'article_txt'}).get_text(),article[0]])
+                    elif article[2] == 'joongang' and clas != 'enter':
+                        docs[i].append([soup.find('div', id='article_body').get_text(), article[0]])
+                    elif article[2] == 'joongang' and clas == 'enter':
+                        docs[3].append([soup.find('div', attrs={'class':'article_body'}, id='article_body').get_text(),article[0]])
+                except Exception as e:
+                    print(e, article[3])
+                    pass
+
+        #text 수집 안된 기사 foregrounds에서 제거 ... 보통 이미지만 있거나 칼럼 또는 없는 기사링크...
+        self.model.arrangeForeground()
 
         fitted = None
 
         for i in range(self.num_class):
             nouns = []
-            for article in self.docs[i]:
+            for article in docs[i]:
                 if article[0] is not '':
                     nouns.append(' '.join([noun for noun in t.nouns(str(article[0]))]))
             vec = TfidfVectorizer(stop_words=stopwords)
@@ -90,18 +121,18 @@ class crawling_func:
             j = 0
             for article in tfidf_res.toarray():
                 idf = sorted(zip(vocab, article), key=lambda kv: kv[1])[-3:]
-                tmp = idf[0][0] + ' ' + idf[1][0] + ' ' + idf[2][0]
-                tfidf_list.append({'_id': self.docs[i][j][2], 'tfidf': tmp, 'link': self.docs[i][j][1]})
+                tfidf_list.append([docs[i][j][1], idf[0][0], idf[1][0], idf[2][0]])
                 j += 1
-        self.background.insert_many(tfidf_list)
+        self.model.insertBackground(tfidf_list)
 
         print('cal_weight done!')
         return
 
     def chosun_crawling(self):
-        data_foreground = []
-        i = 0
+        data_foregrounds = []
         for clas in CHOSUN:
+            if clas[1] == 'economy':
+                pass
             html = get_html(clas[0])
             soup = BeautifulSoup(html, "lxml", from_encoding="utf-8")
             for lt in soup.find_all("dt"):
@@ -111,25 +142,10 @@ class crawling_func:
                     day = link.split('/')
                     day = day[6] + day[7] + day[8]
                     title = tmp.get_text()
-                    html = get_html(link)
-                    soup2 = BeautifulSoup(html, 'lxml', from_encoding='utf-8')
-                    try:
-                        data_foreground.append(
-                            {'_id': str(self._id).zfill(10), 'title': title, 'press': 'chosun', 'link': link,
-                             'day': day, 'class': clas[1]})
-                        self.docs[i].append([soup2.find('div', attrs={'class': 'par'}).get_text(), link, self._id])
-                        self._id += 1
-                    except:
-                        if int(data_foreground[-1]['_id']) == self._id:
-                            data_foreground.pop()
+                    data_foregrounds.append([title, 'chosun', link, day, clas[1]])
                 except :
                     #토론마당 그냥 넘긴다
                     pass
-
-            i += 1
-            if i == 1:
-                i += 1
-
 
         #chosun biz
         html = get_html('http://biz.chosun.com')
@@ -142,22 +158,8 @@ class crawling_func:
         day = link.split('/')
         day = day[6] + day[7] + day[8]
         title = tmp.get_text()
-        html = get_html(link)
-        soup2 = BeautifulSoup(html, 'lxml', from_encoding='utf-8')
-        body = soup2.find('div', id='news_body_id')
-        body = body.find_all('div', attrs={'class': 'par'})
-        text = ""
-        for par in body:
-            text += (par.get_text() + " ")
-        try:
-            data_foreground.append(
-                {'_id': str(self._id).zfill(10), 'title': title, 'press': 'chosun', 'link': link, 'day': day,
-                 'class': 'economy'})
-            self.docs[1].append([text, link, self._id])
-            self._id += 1
-        except:
-            if int(data_foreground[-1]['_id']) == self._id:
-                data_foreground.pop()
+
+        data_foregrounds.append([title, 'chosun', link, day, 'economy'])
 
         # 메인 기사
         for lt in sub.find_all("dt"):
@@ -167,22 +169,7 @@ class crawling_func:
                 day = link.split('/')
                 day = day[6] + day[7] + day[8]
                 title = tmp.get_text()
-                html = get_html(link)
-                soup2 = BeautifulSoup(html, 'lxml', from_encoding='utf-8')
-                body = soup2.find('div', id='news_body_id')
-                body = body.find_all('div', attrs={'class': 'par'})
-                text = ""
-                for par in body:
-                    text += par.get_text()
-                try:
-                    data_foreground.append(
-                        {'_id': str(self._id).zfill(10), 'title': title, 'press': 'chosun', 'link': link, 'day': day,
-                         'class': 'economy'})
-                    self.docs[1].append([text, link, self._id])
-                    self._id += 1
-                except:
-                    if int(data_foreground[-1]['_id']) == self._id:
-                        data_foreground.pop()
+                data_foregrounds.append([title, 'chosun', link, day, 'economy'])
             except:
                 # 이코노미 조선 넘긴다
                 pass
@@ -195,27 +182,13 @@ class crawling_func:
                 day = link.split('/')
                 day = day[6] + day[7] + day[8]
                 title = tmp.get_text()
-                html = get_html(link)
-                soup2 = BeautifulSoup(html, 'lxml', from_encoding='utf-8')
-                body = soup2.find('div', id='news_body_id')
-                body = body.find_all('div', attrs={'class': 'par'})
-                text = ""
-                for par in body:
-                    text += par.get_text()
-                try:
-                    data_foreground.append(
-                        {'_id': str(self._id).zfill(10), 'title': title, 'press': 'chosun', 'link': link, 'day': day,
-                         'class': 'economy'})
-                    self.docs[1].append([text, link, self._id])
-                    self._id += 1
-                except:
-                    if int(data_foreground[-1]['_id']) == self._id:
-                        data_foreground.pop()
+                data_foregrounds.append([title, 'chosun', link, day, 'economy'])
+
             except:
                 # 키워드 검색 넘긴다
                 pass
         try:
-            self.foreground.insert_many(data_foreground)
+            self.model.insertForeground(data_foregrounds)
         except:
             print("조선일보 뉴스 정보를 가져올 수 없습니다.")
             return
@@ -223,8 +196,7 @@ class crawling_func:
         return
 
     def donga_crawling(self):
-        data_foreground = []
-        i = 0
+        data_foregrounds = []
 
         for clas in DONGA:
             html = get_html(clas[0])
@@ -235,18 +207,7 @@ class crawling_func:
                 link = art.get('href')
                 day = link.split('/')[6]
                 title = art.find(attrs={'class': 'title'}).get_text()
-                html = get_html(link)
-                soup2 = BeautifulSoup(html, 'lxml', from_encoding='utf-8')
-                try:
-                    data_foreground.append(
-                        {'_id': str(self._id).zfill(10), 'title': title, 'press': 'donga', 'link': link, 'day': day,
-                         'class': clas[1]})
-                    self.docs[i].append([soup2.find('div', attrs={'class': 'article_txt'}).get_text(), link, self._id])
-                    self._id += 1
-                except:
-                    if int(data_foreground[-1]['_id']) == self._id:
-                        data_foreground.pop()
-
+                data_foregrounds.append([title, 'donga', link, day, clas[1]])
             # issue
             try:
                 content_issue = soup.find('div', attrs={'class': 'issueList'})
@@ -255,17 +216,7 @@ class crawling_func:
                         link = art.get('href')
                         day = link.split('/')[6]
                         title = art.get_text()
-                        html = get_html(link)
-                        soup2 = BeautifulSoup(html, 'lxml', from_encoding='utf-8')
-                        try:
-                            data_foreground.append(
-                                {'_id': str(self._id).zfill(10), 'title': title, 'press': 'donga', 'link': link, 'day': day,
-                                 'class': clas[1]})
-                            self.docs[i].append([soup2.find('div', attrs={'class': 'article_txt'}).get_text(), link, self._id])
-                            self._id += 1
-                        except:
-                            if int(data_foreground[-1]['_id']) == self._id:
-                                data_foreground.pop()
+                        data_foregrounds.append([title, 'donga', link, day, clas[1]])
                     except:
                         pass
 
@@ -278,21 +229,10 @@ class crawling_func:
                 link = tmp.get('href')
                 day = link.split('/')[6]
                 title = tmp.find(attrs={'class': 'tit'}).get_text()
-                html = get_html(link)
-                soup2 = BeautifulSoup(html, 'lxml', from_encoding='utf-8')
-                try:
-                    data_foreground.append(
-                        {'_id': str(self._id).zfill(10), 'title': title, 'press': 'donga', 'link': link, 'day': day,
-                         'class': clas[1]})
-                    self.docs[i].append([soup2.find('div', attrs={'class': 'article_txt'}).get_text(), link, self._id])
-                    self._id += 1
-                except:
-                    if int(data_foreground[-1]['_id']) == self._id:
-                        data_foreground.pop()
-            i += 1
+                data_foregrounds.append([title, 'donga', link, day, clas[1]])
 
         try:
-            self.foreground.insert_many(data_foreground)
+            self.model.insertForeground(data_foregrounds)
         except:
             print("동아일보 뉴스 정보를 가져올 수 없습니다.")
             return
@@ -301,10 +241,11 @@ class crawling_func:
 
     def joongang_crawling(self):
         day = datetime.today().strftime("%Y%m%d")
-        data_foreground = []
-        i = 0
+        data_foregrounds = []
 
         for clas in JOONGANG:
+            if clas[1] == 'enter':
+                pass
             html = get_html(clas[0])
             soup = BeautifulSoup(html, 'lxml', from_encoding='utf-8')
             for art in soup.find_all(attrs={'class':'headline mg'}):
@@ -314,25 +255,10 @@ class crawling_func:
                     if "http" not in link:
                         link = "https://news.joins.com" + link
                     title = tmp.get_text()
-                    html2 = get_html(link)
-                    soup2 = BeautifulSoup(html2, 'lxml', from_encoding='utf-8')
-                    try:
-                        data_foreground.append(
-                            {'_id': str(self._id).zfill(10), 'title': title, 'press': 'joongang', 'link': link, 'day': day,
-                             'class': clas[1]})
-                        self.docs[i].append([soup2.find('div', id='article_body').get_text(),
-                                        link, self._id])
-                        self._id += 1
-                    except:
-                        if int(data_foreground[-1]['_id']) == self._id:
-                            data_foreground.pop()
+                    data_foregrounds.append([title, 'joongang', link, day, clas[1]])
                 except :
                     #아래 이미지에 대한 텍스트 넘긴다
                     pass
-
-            i += 1
-            if i == 3:
-                i += 1
 
         #joongang culture
         for clas in JOONGANG_CUL:
@@ -345,22 +271,10 @@ class crawling_func:
                 tmp = art.find('a')
                 link = 'http://news.joins.com' + tmp.get('href')
                 title = tmp.get_text()
-
-                html2 = get_html(link)
-                soup2 = BeautifulSoup(html2, 'lxml', from_encoding='utf-8')
-                try:
-                    data_foreground.append(
-                        {'_id': str(self._id).zfill(10), 'title': title, 'press': 'joongang', 'link': link, 'day': day,
-                         'class': clas[1]})
-                    self.docs[3].append([soup2.find('div', attrs={'class': 'article_body'},
-                                               id='article_body').get_text(), link, self._id])
-                    self._id += 1
-                except:
-                    if int(data_foreground[-1]['_id']) == self._id:
-                        data_foreground.pop()
+                data_foregrounds.append([title, 'joongang', link, day, clas[1]])
 
         try:
-            self.foreground.insert_many(data_foreground)
+            self.model.insertForeground(data_foregrounds)
         except:
             print("중앙일보 뉴스 정보를 가져올 수 없습니다.")
             return

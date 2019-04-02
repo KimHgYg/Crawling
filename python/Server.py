@@ -21,10 +21,12 @@ class server:
             if ID == "":
                 logger.debug("Socket closed remotely")
                 return
+
             #ID 값을 받았다면 model_obj로 부터 predict
             logger.debug("Received ID %r", ID)
             Content = self.model_obj.predict_model(ID)
             conn.sendall(Content)
+
         except:
             logger.exception("Problem handling request")
         finally:
@@ -32,7 +34,6 @@ class server:
             conn.close()
 
         return
-
 
     #listening socket on
     def _start(self):
@@ -43,7 +44,7 @@ class server:
 
         #연결 받으면 연결 객체 넘기고 새로운 연결 기다린다
         while True:
-            conn, address = self.socket.accept()
+            (conn, address) = self.socket.accept()
             self.logger.debug("Got connection")
             process = multiprocessing.Process(target=self.handle, args=(conn,address))
             process.daemon = True
