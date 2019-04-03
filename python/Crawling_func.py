@@ -3,8 +3,24 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 import pandas as pd
 
+from konlpy.tag import Okt
 from sklearn.feature_extraction.text import TfidfVectorizer
-from konlpy.tag import Twitter
+
+import model
+
+'''
+KONLPY GPL v3 이상
+박은정, 조성준, “KoNLPy: 쉽고 간결한 한국어 정보처리 파이썬 패키지”, 제 26회 한글 및 한국어 정보처리 학술대회 논문집, 2014.
+
+@inproceedings{park2014konlpy,
+  title={KoNLPy: Korean natural language processing in Python},
+  author={Park, Eunjeong L. and Cho, Sungzoon},
+  booktitle={Proceedings of the 26th Annual Conference on Human & Cognitive Language Technology},
+  address={Chuncheon, Korea},
+  month={October},
+  year={2014}
+}
+'''
 import re
 
 # 정치 경제 스포츠 연예 사회 국제
@@ -38,11 +54,11 @@ def get_html(url):
     return _html
 
 class crawling_func:
-    def __init__(self, model):
+    def __init__(self):
         # 기사의 class 개수
         self.num_class = 6
-        self.model = model
-
+        self.model = model.model()
+        self.vocab = None
 
     def crawling(self):
         print("Crawling Start...")
@@ -63,30 +79,31 @@ class crawling_func:
 
     def cal_weight(self):
         print('calculating weight...')
-        docs = [[] for i in range(6)]
-        stopwords = ['.', ',', '\n', '\xa0', re.compile('^A-Za-z*$')]
-        tfidf_list = []
+
         #twitter로 명사 추출
-        t = Twitter()
+        t = Okt()
 
         #foregrounds 모델에서 데이터 select한 cursor
-        cols = ['id','class','press','link']
-        cursor = pd.DataFrame(self.model.selectForeground(*cols),columns=cols)
+        cols = ['id', 'class', 'press', 'link']
+        cursor = pd.DataFrame(self.model.selectForeground(projection=cols, join=None), columns=cols)
 
-        #class별로 cursor 데이터 분류해서 docs에 넣는다
-        for clas, i in [('politics',0),('economy',1),('sports',2),('enter',3),('national',4),('inter',5)]:
+        # text를 담을 변수
+        docs = [[] for i in range(6)]
+
+        #class별로 cursor 데이터 분류해서 기사 내용 가져온 뒤 docs에 넣는다
+        for clas, i in [('politics', 0), ('economy', 1), ('sports', 2), ('enter', 3), ('national', 4), ('inter', 5)]:
             df_tmp = cursor.loc[cursor['class'] == clas]
             for article in df_tmp.values:
                 html = get_html(article[3])
                 soup = BeautifulSoup(html,'lxml', from_encoding='utf-8')
                 try:
                     if article[2] == 'chosun' and clas == 'economy':
-                        body = soup.find('div',id='news_body_id')
-                        body = body.find_all('div',attrs={'class':'par'})
+                        body = soup.find('div', id='news_body_id')
+                        body = body.find_all('div', attrs={'class':'par'})
                         text = ''
                         for par in body:
                             text += par.get_text()
-                        docs[1].append([text,article[0]])
+                        docs[1].append([text, article[0]])
                     elif article[2] == 'chosun' and clas != 'economy':
                         text = ""
                         body = soup.find('div', id='news_body_id')
@@ -95,11 +112,11 @@ class crawling_func:
                             text += (par.get_text() + " ")
                         docs[i].append([text, article[0]])
                     elif article[2] == 'donga':
-                        docs[i].append([soup.find('div', attrs={'class':'article_txt'}).get_text(),article[0]])
+                        docs[i].append([soup.find('div', attrs={'class' : 'article_txt'}).get_text(), article[0]])
                     elif article[2] == 'joongang' and clas != 'enter':
                         docs[i].append([soup.find('div', id='article_body').get_text(), article[0]])
                     elif article[2] == 'joongang' and clas == 'enter':
-                        docs[3].append([soup.find('div', attrs={'class':'article_body'}, id='article_body').get_text(),article[0]])
+                        docs[3].append([soup.find('div', attrs={'class' : 'article_body'}, id='article_body').get_text(), article[0]])
                 except Exception as e:
                     print(e, article[3])
                     pass
@@ -107,26 +124,33 @@ class crawling_func:
         #text 수집 안된 기사 foregrounds에서 제거 ... 보통 이미지만 있거나 칼럼 또는 없는 기사링크...
         self.model.arrangeForeground()
 
-        fitted = None
-
+        #기사 별 tfidf를 담을 변수
+        tfidf_list = []
+        stopwords = ['.', ',', '\n', '\xa0', re.compile('^A-Za-z*$')] #영어 제외
         for i in range(self.num_class):
-            nouns = []
-            for article in docs[i]:
-                if article[0] is not '':
-                    nouns.append(' '.join([noun for noun in t.nouns(str(article[0]))]))
-            vec = TfidfVectorizer(stop_words=stopwords)
-            fitted = vec.fit(nouns)
-            tfidf_res = fitted.transform(nouns)
-            vocab = fitted.get_feature_names()
+            pos = lambda d:['/'.join(p) for p in t.pos(d, stem=True, norm=True)]
+            nouns = [' '.join(pos(article[0]) for article in docs[i])] #각 기사별 명사 담음
+                                                                    #명사, 태거 tuple로 되있어서 article[0]으로 명사만
+                                                                    #pos를 사용하여 normalization 및 stemming 가능
+            vec = TfidfVectorizer(stop_words=stopwords) #tfidf vectorizer 모델 만든다
+            tfidf_res = vec.fit_transform(nouns) #해당 class의 단어들에 대한 가중치 계산
+                                                 #+ tf-idf-weighted document-term matrix 반환
+            self.vocab = vec.get_feature_names() #feature에 해당하는 단어 배열
             j = 0
-            for article in tfidf_res.toarray():
-                idf = sorted(zip(vocab, article), key=lambda kv: kv[1])[-3:]
-                tfidf_list.append([docs[i][j][1], idf[0][0], idf[1][0], idf[2][0]])
+            for article in tfidf_res.toarray(): #한 문서씩 단어들의 가중치 배열을 읽으며 vocab과 매치시키고
+                                                #정렬해서 큰 순서대로 3개만 가져온다
+                idf = sorted(zip(self.vocab, article), key=lambda kv: kv[1])[-3:]
+                idf_converted = [self.vocab.index(i) for i in idf]
+                tfidf_list.append([docs[i][j][1], idf_converted[2], idf_converted[1], idf_converted[0]])
                 j += 1
+
         self.model.insertBackground(tfidf_list)
 
         print('cal_weight done!')
         return
+
+    def get_vocab(self):
+        return self.vocab
 
     def chosun_crawling(self):
         data_foregrounds = []

@@ -49,35 +49,16 @@ class model:
         finally:
             cursor.close()
 
-    def selectForeground(self, *args):
+    def selectForeground(self, **kwargs):
         query = "SELECT "
-        for arg in args:
+        projection = kwargs['projection']
+        join = kwargs['join']
+        for arg in projection:
             query += arg + " ,"
         query = query[:-1]
         query += "FROM foregrounds"
-        results = []
-        cursor = self.conn.cursor()
-        try:
-            cursor.execute(query)
-
-            rows = cursor.fetchall()
-            for row in rows:
-                results.append(row)
-
-        except Error as e:
-            print('select foregorund error : ', e)
-
-        finally:
-            cursor.close()
-
-        return results
-
-    def selectBackgroudns(self, *args):
-        query = "SELECT "
-        for arg in args:
-            query += arg + " ,"
-        query = query[:-1]
-        query += "FROM backgorunds"
+        if join is not None:
+            query += " WHERE " + join
         results = []
         cursor = self.conn.cursor()
         try:
@@ -88,7 +69,34 @@ class model:
                 results.append(list(row))
 
         except Error as e:
-            print('select backgorund error : ', e)
+            print('select foreground error : ', e)
+
+        finally:
+            cursor.close()
+
+        return results
+
+    def selectBackgroudns(self, **kwargs):
+        query = "SELECT "
+        projection = kwargs['projection']
+        join = kwargs['join']
+        for arg in projection:
+            query += arg + " ,"
+        query = query[:-1]
+        query += "FROM backgrounds"
+        if join is not None:
+            query += " WHERE " + join
+        results = []
+        cursor = self.conn.cursor()
+        try:
+            cursor.execute(query)
+
+            rows = cursor.fetchall()
+            for row in rows:
+                results.append(list(row))
+
+        except Error as e:
+            print('select background error : ', e)
 
         finally:
             cursor.close()
@@ -99,7 +107,7 @@ class model:
         try:
             query = "DELETE FROM foregrounds where id not in (SELECT id FROM backgrounds);"
             cursor = self.conn.cursor()
-            cursor.excute(query)
+            cursor.execute(query)
             self.conn.commit()
         except Exception as e:
             print(e)
@@ -109,7 +117,7 @@ class model:
         try:
             query = "DELETE FROM backgrounds where id not in (SELECT id FROM foregrounds);"
             cursor = self.conn.cursor()
-            cursor.excute(query)
+            cursor.execute(query)
             self.conn.commit()
         except Exception as e:
             print(e)

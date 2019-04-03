@@ -1,7 +1,7 @@
 import Crawling_func
 import RNN
 import Server
-import model
+
 import logging
 import multiprocessing
 import pymongo
@@ -12,15 +12,12 @@ class Main_Program:
     # 프로그램 객체 생성
     def __init__(self):
         #MongoDB와 연결
-        self.Conn = pymongo.MongoClient('127.0.0.1',27017)
+        self.Conn = pymongo.MongoClient('127.0.0.1', 27017)
         #MySQL과 연결 객체
-        self.Model = model.model()
         #크롤링객체 생성
-        self.Crawling = Crawling_func.crawling_func(self.Model)
+        self.Crawling = Crawling_func.crawling_func()
         print('Crawling object created')
-        #모델 객체 생성
-        self.model_obj = RNN.rnn(self.Conn)
-        print('model object created')
+        self.model_obj = None
 
 
     #크롤링...
@@ -39,22 +36,31 @@ class Main_Program:
         #  Menu
         while True:
             menu = int(input("1 : crawling " +
-                             "2 : load model " +
-                             "3 : build model " +
-                             "4 : learn model " +
-                             "5 : open socket for recommendation\n" +
-                             "6 : exit program (warn : Data will be deleted)\n"))
+                             "2 : make training set" +
+                             "3 : load model " +
+                             "4 : build model " +
+                             "5 : learn model " +
+                             "6 : open socket for recommendation\n" +
+                             "7 : exit program (warn : Data will be deleted)\n"))
             #  start crawling -- blocked
             if menu == 1:
                 self.Crawling.crawling()
+            elif menu == 2:
+                # 모델 객체 생성
+                vocab = self.Crawling.get_vacab()
+                if vocab is None:
+                    print('crawling must have been done first')
+                    continue
+                self.model_obj = RNN.Rnn(self.Conn, vocab)
+                print('model object created')
                 self.model_obj.data_manipulate()
             # load model --blocked
-            elif menu == 2:
+            elif menu == 3:
                 if (self.model_obj.loadModel() == False):
                     print("There's no saved model, please build model first\n")
 
             # build model -- blocked
-            elif menu == 3:
+            elif menu == 4:
                 p = int(input("1 : build relu model\n" +
                               "2 : build sigmoid model\n" +
                               "3 : build bidirectional relu model\n" +
@@ -67,7 +73,7 @@ class Main_Program:
                     self.model_obj.build_model_bi()
                 elif (p == 4):
                     self.model_obj.build_model_sig_bi()
-            elif menu == 4:
+            elif menu == 5:
                 if (self.model_obj.train_ready() == False):
                     print("Training set not exist")
                     continue
@@ -85,11 +91,11 @@ class Main_Program:
                     self.model_obj.learn_model_sig_bi()
 
             # start recommand program
-            elif menu == 5:
-                self.server = Server('0.0.0.0',3002,self.model_obj)
+            elif menu ==6:
+                self.server = Server('0.0.0.0', 3002, self.model_obj)
                 self.server.start_server()
 
-            elif menu == 6:
+            elif menu == 7:
                 print("Exitting program")
                 break
 

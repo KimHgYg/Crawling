@@ -1,11 +1,11 @@
 import socket
+import logging
 import multiprocessing
 from multiprocessing import current_process
 
 class server:
     #클래스 객체 초기화
     def __init__(self, hostname, port, model_obj):
-        import logging
         self.model_obj = model_obj
         self.logger = logging.getLogger("server")
         self.hostname = hostname
@@ -16,7 +16,7 @@ class server:
         try:
             #ID 정보를 받아 예측 후 추천 tf-idf값 전송
             logger.debug("Connected %r at %r process-%r", conn, address,current_process().name)
-            ID = conn.recv(1024)
+            ID = conn.recv(100)
             #받은 값이 없다면 리턴
             if ID == "":
                 logger.debug("Socket closed remotely")
@@ -30,7 +30,7 @@ class server:
         except:
             logger.exception("Problem handling request")
         finally:
-            logger.debug("Closing socket")
+            logger.debug("Closing socket, end process %r", current_process().name)
             conn.close()
 
         return
@@ -40,13 +40,13 @@ class server:
         self.logger.debug("listening")
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.bind((self.hostname, self.port))
-        self.socket.listen(1)
+        self.socket.listen()
 
         #연결 받으면 연결 객체 넘기고 새로운 연결 기다린다
         while True:
             (conn, address) = self.socket.accept()
             self.logger.debug("Got connection")
-            process = multiprocessing.Process(target=self.handle, args=(conn,address))
+            process = multiprocessing.Process(target=self.handle, args=(conn, address, self.logger))
             process.daemon = True
             process.start()
             self.logger.debug("Started process %r", process)
